@@ -1,5 +1,3 @@
-Creating Multiple Instances on CentOS Stream 9 using 5.7
-
 1. Create Data Directories
 
 	• mkdir -p /var/lib/mysql1
