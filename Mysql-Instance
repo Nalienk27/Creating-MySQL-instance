@@ -1,0 +1,132 @@
+Creating Multiple Instances on CentOS Stream 9 using 5.7
+
+1. Create Data Directories
+
+	• mkdir -p /var/lib/mysql1
+	• mkdir -p /var/lib/mysql2
+	• chown -R mysql:mysql /var/lib/mysql1 /var/lib/mysql2
+
+2.Create Config Files
+
+	• vi /etc/my.cnf1
+	[mysqld]
+	datadir=/var/lib/mysql1
+	socket=/var/lib/mysql1/mysql.sock
+	port=3307
+	pid-file=/var/run/mysqld/mysqld1.pid
+	log-error=/var/log/mysqld1.log
+
+	•  vi /etc/my.cnf2
+	[mysqld]
+	datadir=/var/lib/mysql2
+	socket=/var/lib/mysql2/mysql.sock
+	port=3308
+	pid-file=/var/run/mysqld/mysqld2.pid
+	log-error=/var/log/mysqld2.log
+
+3. Initialize the Instances
+
+	• sudo mysqld --initialize --user=mysql --datadir=/var/lib/mysql1 
+	• sudo mysqld --initialize --user=mysql --datadir=/var/lib/mysql2
+	
+4. Get Temporary Passwords
+
+	• sudo grep 'temporary password' /var/log/mysql1.log
+	• sudo grep 'temporary password' /var/log/mysql2.log
+	
+5. Create Systemd Unit Files
+
+	•  vi /etc/systemd/system/mysqld1.service
+	[Unit]
+	Description=MySQL Server Instance 1
+	After=network.target
+	
+	[Service]
+	User=mysql
+	Group=mysql
+	
+	Type=forking
+	PIDFile=/run/mysqld/mysqld1.pid
+	
+	# Disable service start and stop timeout logic
+	TimeoutSec=0
+	
+	PermissionsStartOnly=true
+	ExecStartPre=/usr/bin/mysqld_pre_systemd
+	
+	# Start main service with forking enabled
+	ExecStart=/usr/sbin/mysqld --defaults-file=/etc/my.cnf1 --daemonize --pid-file=/run/mysqld/mysqld1.pid
+	
+	EnvironmentFile=-/etc/sysconfig/mysql
+	LimitNOFILE=5000
+	Restart=on-failure
+	RestartPreventExitStatus=1
+	PrivateTmp=false
+	
+	[Install]
+	WantedBy=multi-user.target
+	
+	•  vi /etc/systemd/system/mysqld2.service
+	[Unit]
+	Description=MySQL Server Instance 2
+	After=network.target
+	
+	[Service]
+	User=mysql
+	Group=mysql
+	
+	Type=forking
+	PIDFile=/run/mysqld/mysqld2.pid
+	
+	TimeoutSec=0
+	PermissionsStartOnly=true
+	
+	ExecStartPre=/usr/bin/mysqld_pre_systemd
+	
+	ExecStart=/usr/sbin/mysqld --defaults-file=/etc/my.cnf2 --daemonize --pid-file=/run/mysqld/mysqld2.pid
+	
+	EnvironmentFile=-/etc/sysconfig/mysql
+	LimitNOFILE=5000
+	Restart=on-failure
+	RestartPreventExitStatus=1
+	PrivateTmp=false
+	
+	[Install]
+	WantedBy=multi-user.target
+	
+6. Reload Systemd and Start Instances
+
+	• systemctl daemon-reexec
+	• systemctl daemon-reload
+	• systemctl start mysqld1
+	• systemctl start mysqld2
+	• systemctl enable mysqld1
+	• systemctl enable mysqld2
+
+7. Verify
+	
+	• ss -tulnp | grep mysqld
+	
+8.Connect to specific instance:
+
+	• mysql -u root -p --socket=/var/lib/mysql1/mysql.sock OR mysql -u root --socket=/var/lib/mysql1/mysql.sock
+	
+	OR
+	• mysql -u root -p -h 127.0.0.1 -P 3307
+	
+9.Set correct SELinux context
+
+	• semanage fcontext -a -t mysqld_db_t "/var/lib/mysql1(/.*)?"
+	• semanage fcontext -a -t mysqld_db_t "/var/lib/mysql2(/.*)?"
+	• restorecon -Rv /var/lib/mysql1
+	• restorecon -Rv /var/lib/mysql2
+	OR
+	• setenforce 0
+	
+10.Firewall Configuration
+
+	• sudo firewall-cmd --add-port=3306/tcp --permanent
+	• sudo firewall-cmd --add-port=3307/tcp --permanent
+	• sudo firewall-cmd --add-port=3308/tcp --permanent
+	• sudo firewall-cmd --reload
+
